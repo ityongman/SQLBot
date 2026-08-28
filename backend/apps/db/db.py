@@ -272,15 +272,19 @@ def get_driver_connection(ds: CoreDatasource | AssistantOutDsSchema, db_config: 
             )
     elif equals_ignore_case(ds.type, 'hive'):
         if not use_pool:
-            conn = hive.connect(host=conf.host, port=conf.port, username=conf.username,
-                                database=conf.database, **conn_conf)
+            conn = hive.connect(host=conf.host, port=conf.port, username=conf.username, database=conf.database,
+                                password=conf.password if conf.password else None,
+                                auth='LDAP' if conf.password else None, **conn_conf)
         else:
             conn = PooledDB(
                 creator=hive,
                 host=conf.host,
                 port=conf.port,
                 username=conf.username,
-                database=conf.database, **conn_conf
+                database=conf.database,
+                password=conf.password if conf.password else None,
+                auth='LDAP' if conf.password else None,
+                **conn_conf
             )
 
     return conn
@@ -366,8 +370,10 @@ def check_connection(trans: Optional[Trans], ds: CoreDatasource | AssistantOutDs
                         raise HTTPException(status_code=500, detail=trans('i18n_ds_invalid') + f': {e.args}')
                     return False
         elif equals_ignore_case(ds.type, 'hive'):
-            with hive.connect(host=conf.host, port=conf.port, username=conf.username,
-                              database=conf.database, **extra_config_dict) as conn, conn.cursor() as cursor:
+            with hive.connect(host=conf.host, port=conf.port, username=conf.username, database=conf.database,
+                              password=conf.password if conf.password else None,
+                              auth='LDAP' if conf.password else None,
+                              **extra_config_dict) as conn, conn.cursor() as cursor:
                 try:
                     cursor.execute('select 1')
                     SQLBotLogUtil.info("success")
@@ -528,7 +534,7 @@ def get_tables(ds: CoreDatasource):
                 return res_list
         elif equals_ignore_case(ds.type, 'kingbase'):
             with get_driver_connection(ds) as conn, conn.cursor() as cursor:
-                cursor.execute(sql.format(sql_param))
+                cursor.execute(sql, (sql_param,))
                 res = cursor.fetchall()
                 res_list = [TableSchema(*item) for item in res]
                 return res_list
@@ -578,7 +584,8 @@ def get_fields(ds: CoreDatasource, table_name: str = None):
                 return res_list
         elif equals_ignore_case(ds.type, 'kingbase'):
             with get_driver_pool(ds).connection() as conn, conn.cursor() as cursor:
-                cursor.execute(sql.format(p1, p2))
+                # cursor.execute(sql.format(p1, p2))
+                cursor.execute(sql, (p1, p2))
                 res = cursor.fetchall()
                 res_list = [ColumnSchema(*item) for item in res]
                 return res_list
@@ -590,7 +597,7 @@ def get_fields(ds: CoreDatasource, table_name: str = None):
             with get_driver_pool(ds).connection() as conn, conn.cursor() as cursor:
                 cursor.execute(sql)
                 res = cursor.fetchall()
-                res_list = [ColumnSchema(*item) for item in res]
+                res_list = [ColumnSchema(*item[:3]) for item in res]
                 return res_list
 
 

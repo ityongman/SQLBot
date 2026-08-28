@@ -1,7 +1,7 @@
 from collections import defaultdict
 from typing import Optional
 from fastapi import APIRouter, File, Path, Query, UploadFile
-from sqlmodel import SQLModel, or_, select, delete as sqlmodel_delete
+from sqlmodel import SQLModel, case, or_, select, delete as sqlmodel_delete
 from apps.system.crud.user import check_account_exists, check_email_exists, check_email_format, check_pwd_format, get_db_user, single_delete, user_ws_options
 from apps.system.crud.user_excel import batchUpload, downTemplate, download_error_file
 from apps.system.models.system_model import UserWsModel, WorkspaceModel
@@ -80,27 +80,71 @@ async def pager(
     if order_by and order_by != 'account':
         select_columns.append(sort_field)
 
+    # 相似度排序：综合考虑匹配字段数量和相似度分数
+    # 当有 keyword 时，将 match_count 和 total_score 加入 SELECT 列以满足 DISTINCT 约束
+    # 匹配字段越多越靠前；相同匹配字段数时，总分越低（相似度越高）越靠前
+    match_count = None
+    total_score = None
+    if keyword:
+        from sqlalchemy import func
+        # 每个字段的相似度分数 (0=精确匹配, 1=前缀匹配, 2=包含匹配, 3=无匹配)
+        account_score = case(
+            (UserModel.account == keyword, 0),
+            (UserModel.account.startswith(keyword), 1),
+            (UserModel.account.contains(keyword), 2),
+            else_=3
+        )
+        name_score = case(
+            (UserModel.name == keyword, 0),
+            (UserModel.name.startswith(keyword), 1),
+            (UserModel.name.contains(keyword), 2),
+            else_=3
+        )
+        email_score = case(
+            (UserModel.email == keyword, 0),
+            (UserModel.email.startswith(keyword), 1),
+            (UserModel.email.contains(keyword), 2),
+            else_=3
+        )
+        # 计算匹配字段数量（score < 3 表示有匹配）：匹配字段越多越靠前
+        match_count = (
+            case((account_score < 3, 1), else_=0) +
+            case((name_score < 3, 1), else_=0) +
+            case((email_score < 3, 1), else_=0)
+        )
+        # 总相似度分数：三个字段分数之和，越低越好
+        total_score = account_score + name_score + email_score
+        select_columns.append(match_count.label('match_count'))
+        select_columns.append(total_score.label('total_score'))
+
     origin_stmt = (
         select(*select_columns)
         .join(UserWsModel, UserModel.id == UserWsModel.uid, isouter=True)
         .where(UserModel.id != 1)
         .distinct()
-        .order_by(sort_clause)
     )
-    
+    # 根据是否有 keyword 决定排序方式
+    if keyword:
+        # 按匹配字段数降序、总分升序、再按用户选择的排序字段
+        origin_stmt = origin_stmt.order_by(match_count.desc(), total_score.asc(), sort_clause)
+    else:
+        origin_stmt = origin_stmt.order_by(sort_clause)
+
     if oidlist:
         origin_stmt = origin_stmt.where(UserWsModel.oid.in_(oidlist))
     if origins:
         origin_stmt = origin_stmt.where(UserModel.origin.in_(origins))
     if status is not None:
-        origin_stmt = origin_stmt.where(UserModel.status == status)        
+        origin_stmt = origin_stmt.where(UserModel.status == status)
     if keyword:
-        keyword_pattern = f"%{keyword}%"
+        # 转义 SQL LIKE 特殊字符（_ 匹配单个字符，% 匹配任意字符串）
+        escaped_keyword = keyword.replace('\\', '\\\\').replace('_', '\\_').replace('%', '\\%')
+        keyword_pattern = f"%{escaped_keyword}%"
         origin_stmt = origin_stmt.where(
             or_(
-                UserModel.account.ilike(keyword_pattern),
-                UserModel.name.ilike(keyword_pattern),
-                UserModel.email.ilike(keyword_pattern)
+                UserModel.account.ilike(keyword_pattern, escape='\\'),
+                UserModel.name.ilike(keyword_pattern, escape='\\'),
+                UserModel.email.ilike(keyword_pattern, escape='\\')
             )
         )
         
@@ -114,8 +158,40 @@ async def pager(
         select(UserModel, UserWsModel.oid.label('ws_oid'))
         .join(UserWsModel, UserModel.id == UserWsModel.uid, isouter=True)
         .where(UserModel.id.in_(uid_list))
-        .order_by(sort_clause)
     )
+    # 第二次查询也需要应用相同的相似度排序
+    if keyword:
+        from sqlalchemy import func
+        account_score = case(
+            (UserModel.account == keyword, 0),
+            (UserModel.account.startswith(keyword), 1),
+            (UserModel.account.contains(keyword), 2),
+            else_=3
+        )
+        name_score = case(
+            (UserModel.name == keyword, 0),
+            (UserModel.name.startswith(keyword), 1),
+            (UserModel.name.contains(keyword), 2),
+            else_=3
+        )
+        email_score = case(
+            (UserModel.email == keyword, 0),
+            (UserModel.email.startswith(keyword), 1),
+            (UserModel.email.contains(keyword), 2),
+            else_=3
+        )
+        # 计算匹配字段数量（score < 3 表示有匹配）：匹配字段越多越靠前
+        match_count = (
+            case((account_score < 3, 1), else_=0) +
+            case((name_score < 3, 1), else_=0) +
+            case((email_score < 3, 1), else_=0)
+        )
+        # 总相似度分数：三个字段分数之和，越低越好
+        total_score = account_score + name_score + email_score
+        # 排序：匹配字段数降序、总分升序、再按用户选择的排序字段
+        stmt = stmt.order_by(match_count.desc(), total_score.asc(), sort_clause)
+    else:
+        stmt = stmt.order_by(sort_clause)
     user_workspaces = session.exec(stmt).all()
     merged = defaultdict(list)
     extra_attrs = {}

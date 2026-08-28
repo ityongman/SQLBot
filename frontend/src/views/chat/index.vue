@@ -244,6 +244,7 @@
                         :record-id="message.record?.id"
                         :duration="message.record?.duration"
                         :total-tokens="message.record?.total_tokens"
+                        :error="message.record?.error"
                       />
                       <ChatToolBar v-if="!message.isTyping" :message="message">
                         <div class="tool-btns">
@@ -339,6 +340,7 @@
                         :record-id="message.record?.id"
                         :duration="message.record?.duration"
                         :total-tokens="message.record?.total_tokens"
+                        :error="message.record?.error"
                       />
                       <ChatToolBar v-if="!message.isTyping" :message="message" />
                     </template>
@@ -366,6 +368,7 @@
                         :record-id="message.record?.id"
                         :duration="message.record?.duration"
                         :total-tokens="message.record?.total_tokens"
+                        :error="message.record?.error"
                       />
                       <ChatToolBar v-if="!message.isTyping" :message="message" />
                     </template>
@@ -449,7 +452,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onBeforeUnmount, ref } from 'vue'
 import { Chat, chatApi, ChatInfo, type ChatMessage, ChatRecord } from '@/api/chat'
 import ChatRow from './ChatRow.vue'
 import ChartAnswer from './answer/ChartAnswer.vue'
@@ -480,7 +483,7 @@ import { onClickOutside } from '@vueuse/core'
 import { useAppearanceStoreWithOut } from '@/stores/appearance'
 import { useUserStore } from '@/stores/user'
 import { debounce } from 'lodash-es'
-import { isMobile } from '@/utils/utils'
+import { isMobile, isSupportFlexGap } from '@/utils/utils'
 import router from '@/router'
 import QuickQuestion from '@/views/chat/QuickQuestion.vue'
 import { useChatConfigStore } from '@/stores/chatConfig.ts'
@@ -937,25 +940,27 @@ async function clickAnalysis(id?: number) {
 
 function getRecordUsage(recordId: any) {
   console.debug('getRecordUsage id: ', recordId)
-  nextTick(() => {
-    chatApi
-      .get_chart_usage(recordId)
-      .then((res) => {
-        const logHistory = chatApi.toChatLogHistory(res)
-        if (logHistory) {
-          currentChat.value.records.forEach((record) => {
-            if (record.id === recordId) {
-              record.duration = logHistory.duration
-              record.finish_time = logHistory.finish_time
-              record.total_tokens = logHistory.total_tokens
-            }
-          })
-        }
-      })
-      .catch((e) => {
-        console.error(e)
-      })
-  })
+  if (recordId) {
+    nextTick(() => {
+      chatApi
+        .get_chart_usage(recordId)
+        .then((res) => {
+          const logHistory = chatApi.toChatLogHistory(res)
+          if (logHistory) {
+            currentChat.value.records.forEach((record) => {
+              if (record.id === recordId) {
+                record.duration = logHistory.duration
+                record.finish_time = logHistory.finish_time
+                record.total_tokens = logHistory.total_tokens
+              }
+            })
+          }
+        })
+        .catch((e) => {
+          console.error(e)
+        })
+    })
+  }
 }
 
 const predictAnswerRef = ref()
@@ -1125,8 +1130,19 @@ function jumpCreatChat() {
     history.replaceState({}, '', newUrl)
   }
 }
-
+function checkAfterVisible() {
+  if (document.visibilityState === 'visible') {
+    clearInterval(time)
+    requestAnimationFrame(() => {
+      isSupportFlexGap()
+    })
+  }
+}
+let time: number
 onMounted(() => {
+  time = setInterval(() => {
+    checkAfterVisible()
+  }, 1000)
   chatConfig.fetchGlobalConfig()
   if (isPhone.value) {
     chatListSideBarShow.value = false
@@ -1136,6 +1152,12 @@ onMounted(() => {
   }
   getChatList(jumpCreatChat)
   assistantPrepareInit()
+})
+
+onBeforeUnmount(() => {
+  clearInterval(time)
+  clearInterval(scrollTime)
+  clearTimeout(scrollingTime)
 })
 </script>
 

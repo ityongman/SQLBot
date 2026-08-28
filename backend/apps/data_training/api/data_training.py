@@ -61,16 +61,18 @@ async def create_or_update(session: SessionDep, current_user: CurrentUser, trans
 @system_log(
     LogConfig(operation_type=OperationType.DELETE, module=OperationModules.DATA_TRAINING, resource_id_expr='id_list'))
 @require_permissions(permission=SqlbotPermission(role=['ws_admin']))
-async def delete(session: SessionDep, id_list: list[int]):
-    delete_training(session, id_list)
+async def delete(session: SessionDep, current_user: CurrentUser, id_list: list[int]):
+    oid = current_user.oid
+    delete_training(session, id_list, oid)
 
 
 @router.get("/{id}/enable/{enabled}", summary=f"{PLACEHOLDER_PREFIX}enable_dt")
 @system_log(
     LogConfig(operation_type=OperationType.UPDATE, module=OperationModules.DATA_TRAINING, resource_id_expr='id'))
 @require_permissions(permission=SqlbotPermission(role=['ws_admin']))
-async def enable(session: SessionDep, id: int, enabled: bool, trans: Trans):
-    enable_training(session, id, enabled, trans)
+async def enable(session: SessionDep, current_user: CurrentUser, id: int, enabled: bool, trans: Trans):
+    oid = current_user.oid
+    enable_training(session, id, enabled, trans, oid)
 
 
 @router.get("/export", summary=f"{PLACEHOLDER_PREFIX}export_dt")
@@ -171,9 +173,13 @@ async def upload_excel(trans: Trans, current_user: CurrentUser, file: UploadFile
         raise HTTPException(400, "Only support .xlsx/.xls")
 
     os.makedirs(path, exist_ok=True)
-    base_filename = f"{file.filename.split('.')[0]}_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}"
-    filename = f"{base_filename}.{file.filename.split('.')[1]}"
-    save_path = os.path.join(path, filename)
+    safe_name = os.path.basename(file.filename)
+    name_root, name_ext = os.path.splitext(safe_name)
+    base_filename = f"{name_root}_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}"
+    filename = f"{base_filename}{name_ext}"
+    save_path = os.path.realpath(os.path.join(path, filename))
+    if os.path.commonpath([save_path, os.path.realpath(path)]) != os.path.realpath(path):
+        raise HTTPException(400, "Invalid filename")
     with open(save_path, "wb") as f:
         f.write(await file.read())
 
@@ -251,7 +257,9 @@ async def upload_excel(trans: Trans, current_user: CurrentUser, file: UploadFile
 
             df = pd.DataFrame(md_data, columns=_fields_list)
             error_excel_filename = f"{base_filename}_error.xlsx"
-            save_error_path = os.path.join(path, error_excel_filename)
+            save_error_path = os.path.realpath(os.path.join(path, error_excel_filename))
+            if os.path.commonpath([save_error_path, os.path.realpath(path)]) != os.path.realpath(path):
+                raise Exception("Invalid filename")
             # 保存 DataFrame 到 Excel
             df.to_excel(save_error_path, index=False)
 
