@@ -119,9 +119,10 @@ def update_ds(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreData
 
 
 def update_ds_recommended_config(session: SessionDep, datasource_id: int, recommended_config: int):
-    record = session.exec(select(CoreDatasource).where(CoreDatasource.id == datasource_id)).first()
-    record.recommended_config = recommended_config
-    session.add(record)
+    # 使用 update 语句直接更新，避免 ORM 追踪问题
+    from sqlalchemy import update
+    stmt = update(CoreDatasource).where(CoreDatasource.id == datasource_id).values(recommended_config=recommended_config)
+    session.execute(stmt)
     session.commit()
 
 

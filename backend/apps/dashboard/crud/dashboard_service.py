@@ -149,8 +149,6 @@ def delete_resource(session: SessionDep, current_user: CurrentUser, resource_id:
     coreDashboard = session.get(CoreDashboard, resource_id)
     if not coreDashboard:
         raise ValueError(f"Resource with id {resource_id} does not exist")
-    if coreDashboard.create_by != str(current_user.id):
-        raise ValueError(f"Resource with id {resource_id} not owned by the current user")
     sql = text("DELETE FROM core_dashboard WHERE id = :resource_id")
     result = session.execute(sql, {"resource_id": resource_id})
     session.commit()

@@ -19,15 +19,15 @@ def get_datasource_recommended_chart(session: SessionDep, ds_id: int):
 
 
 def get_datasource_recommended_base(session: SessionDep, ds_id: int):
-    statement = select(CoreDatasource.id,CoreDatasource.recommended_config).where(CoreDatasource.id == ds_id)
+    statement = select(CoreDatasource.id, CoreDatasource.recommended_config).where(CoreDatasource.id == ds_id)
     datasourceBase = session.exec(statement).first()
     if datasourceBase is None:
-        return RecommendedProblemResponse(ds_id,0,None)
+        return RecommendedProblemResponse(ds_id, 0, None)
     elif datasourceBase.recommended_config == 1:
-        return RecommendedProblemResponse(ds_id,1,None)
+        return RecommendedProblemResponse(ds_id, 1, None)
     else:
         dsRecommendedProblems = session.exec(select(DsRecommendedProblem.question).where(DsRecommendedProblem.datasource_id == ds_id)).all()
-        return RecommendedProblemResponse(ds_id,datasourceBase.recommended_config, orjson.dumps(dsRecommendedProblems).decode())
+        return RecommendedProblemResponse(ds_id, datasourceBase.recommended_config, orjson.dumps(dsRecommendedProblems).decode())
 
 def save_recommended_problem(session: SessionDep,user: CurrentUser, data_info: RecommendedProblemBase):
     session.query(DsRecommendedProblem).filter(DsRecommendedProblem.datasource_id == data_info.datasource_id).delete(synchronize_session=False)

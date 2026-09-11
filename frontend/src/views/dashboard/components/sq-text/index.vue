@@ -31,6 +31,7 @@
 <script setup lang="ts">
 import tinymce from 'tinymce/tinymce'
 import Editor from '@tinymce/tinymce-vue'
+import 'tinymce/themes/silver/theme'
 import 'tinymce/icons/default'
 import 'tinymce/plugins/link'
 import '@npkg/tinymce-plugins/letterspacing'
@@ -59,13 +60,17 @@ const tinymceId = 'vue-tinymce-' + +new Date() + ((Math.random() * 1000).toFixed
 const init = reactive({
   base_url: '/tinymce', // 指向 public/tinymce 目录
   suffix: '.min',
-  selector: tinymceId,
+  selector: '#' + tinymceId,
   language: 'zh_CN',
   skin: 'oxide',
   plugins: 'link letterspacing', // 插件
   // 工具栏
+  // toolbar:
+  //   'fontfamily fontsize |forecolor backcolor bold italic letterspacing |underline strikethrough link lineheight| blocks |' +
+  //   'top-align center-align bottom-align | alignleft aligncenter alignright | bullist numlist |' +
+  //   ' blockquote subscript superscript removeformat | table image ',
   toolbar:
-    'fontfamily fontsize | |forecolor backcolor bold italic letterspacing |underline strikethrough link lineheight| formatselect | alignleft aligncenter alignright |',
+    'fontfamily fontsize | forecolor backcolor bold italic letterspacing | underline strikethrough link lineheight | formatselect | alignleft aligncenter alignright ',
   toolbar_location: '/',
   font_family_formats:
     '微软雅黑=Microsoft YaHei;宋体=SimSun;黑体=SimHei;仿宋=FangSong;华文黑体=STHeiti;华文楷体=STKaiti;华文宋体=STSong;华文仿宋=STFangsong;Andale Mono=andale mono,times;Arial=arial,helvetica,sans-serif;Arial Black=arial black,avant garde;Book Antiqua=book antiqua,palatino;Comic Sans MS=comic sans ms,sans-serif;Courier New=courier new,courier;Georgia=georgia,palatino;Helvetica=helvetica;Impact=impact,chicago;Symbol=symbol;Tahoma=tahoma,arial,helvetica,sans-serif;Terminal=terminal,monaco;Times New Roman=times new roman,times;Trebuchet MS=trebuchet ms,geneva;Verdana=verdana,geneva;Webdings=webdings;Wingdings=wingdings',

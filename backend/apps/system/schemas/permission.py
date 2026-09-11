@@ -8,6 +8,7 @@ import re
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlmodel import Session, select
 from apps.chat.models.chat_model import Chat
+from apps.dashboard.models.dashboard_model import CoreDashboard
 from apps.datasource.crud.datasource import get_ws_ds
 from apps.datasource.models.datasource import CoreDatasource
 from common.core.db import engine
@@ -27,7 +28,10 @@ async def get_ws_resource(oid, type) -> list:
         if type == 'ds' or type == 'datasource':
             return await get_ws_ds(session, oid)
         if type == 'chat':
-            stmt = select(Chat.id).where(Chat.oid == oid) 
+            stmt = select(Chat.id).where(Chat.oid == oid)
+        if type == 'dashboard':
+            # workspace_id 是 VARCHAR 类型，需要转换为字符串
+            stmt = select(CoreDashboard.id).where(CoreDashboard.workspace_id == str(oid))
         if stmt is not None:
             db_list = session.exec(stmt).all()
             return db_list
